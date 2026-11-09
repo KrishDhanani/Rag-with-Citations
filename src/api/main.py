@@ -1,0 +1,1 @@
+from fastapi import FastAPI\nfrom src.api.routes import router\n\napp = FastAPI(title='RAG Backend API')\napp.include_router(router)\n

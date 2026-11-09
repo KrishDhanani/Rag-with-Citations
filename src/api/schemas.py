@@ -1,0 +1,1 @@
+from pydantic import BaseModel\nfrom typing import List, Optional, Dict, Any\n\nclass QuestionRequest(BaseModel):\n    question: str\n\nclass Citation(BaseModel):\n    id: str\n    document: str\n    section: Optional[str] = None\n    snippet: str\n\nclass QuestionResponse(BaseModel):\n    answer: str\n    status: str\n    citations: List[Citation]\n
