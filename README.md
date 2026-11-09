@@ -1,4 +1,4 @@
-# 📚 Backend RAG Engine (No UI)
+# 📚 RAG with Citation
 
 Modular RAG system with hybrid search (Dense + BM25), strict citation grounding, refusal thresholding, and automated evaluation.
 
