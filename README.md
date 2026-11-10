@@ -31,12 +31,11 @@ rag-project/
 │   ├── __init__.py
 │   ├── config.py              # Global settings, paths, DB connections & API keys
 │   │
-│   ├── ingestion/             # --- DEV 1 WORKSPACE ---
+│   ├── ingestion/             
 │   │   ├── __init__.py
 │   │   ├── parser.py          # Document loading & markdown/text extraction
 │   │   ├── chunker.py         # Fixed vs semantic chunking strategies
 │   │   ├── vector_store.py    # Vector DB initialization & dense embedding loading
-│   │   └── bm25_indexer.py    # BM25 sparse index builder & disk storage
 │   │
 │   ├── retrieval/             # --- DEV 2 WORKSPACE ---
 │   │   ├── __init__.py
