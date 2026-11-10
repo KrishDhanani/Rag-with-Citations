@@ -12,7 +12,7 @@ Modular RAG system with hybrid search (Dense + BM25), strict citation grounding,
    ```bash
    pip install -r requirements.txt
    ```
-3. Copy `.env.example` to `.env` and add your API keys.
+3. `.env` add your API keys.
 4. Run the API:
    ```bash
    uvicorn src.api.main:app --reload
