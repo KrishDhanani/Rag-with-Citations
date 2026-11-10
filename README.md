@@ -21,11 +21,9 @@ Modular RAG system with hybrid search (Dense + BM25), strict citation grounding,
 ## 📂 Repository Structure
 
 ```text
-rag-project/
-├── data/
-│   ├── raw/                   # Original corpus files (PDFs, Markdown, TXT)
-│   ├── processed/             # Cleaned & chunked JSON/JSONL datasets
-│   └── eval_questions.json    # Benchmark dataset (answerable + unanswerable)
+Rag-with-Citations/
+├── Data/
+│   ├── Any File Type          # Original corpus files (PDFs, Markdown, TXT)
 │
 ├── src/
 │   ├── __init__.py
@@ -33,8 +31,9 @@ rag-project/
 │   │
 │   ├── ingestion/             
 │   │   ├── __init__.py
+|   |   |── ingest_data.py     # Main file to run whole ingestion process at once 
 │   │   ├── parser.py          # Document loading & markdown/text extraction
-│   │   ├── chunker.py         # Fixed vs semantic chunking strategies
+│   │   ├── chunker.py         # Chunking and Re-Section the metadata 
 │   │   ├── vector_store.py    # Vector DB initialization & dense embedding loading
 │   │
 │   ├── retrieval/             # --- DEV 2 WORKSPACE ---
