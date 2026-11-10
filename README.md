@@ -2,9 +2,6 @@
 
 Modular RAG system with hybrid search (Dense + BM25), strict citation grounding, refusal thresholding, and automated evaluation.
 
-## 👥 Team Roles & Responsibilities
-See `roles_table.md` for team division.
-
 ## 🚀 Quickstart
 1. Clone the repo and create virtual environment:
    ```bash
