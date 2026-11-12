@@ -50,6 +50,7 @@ class SparseSearch:
         if not query_tokens:
             return []
 
+        # score every chunk against the query tokens
         scores = self.bm25.get_scores(query_tokens)
         ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
 

@@ -19,6 +19,7 @@ class DenseSearch:
 
         # The collection currently holds every chunk twice (ingestion was run
         # two times), so we ask for more results and drop repeated chunk_ids.
+        # ask for extra results to account for duplicated chunks in the DB
         n = min(top_k * 3, self.collection.count())
         res = self.collection.query(
             query_embeddings=[query_vec],

@@ -21,6 +21,7 @@ class Reranker:
             return []
 
         pairs = [(query, c["text"]) for c in candidates]
+        # cross-encoder reads query+passage together, slower but more accurate
         logits = self.model.predict(pairs)
 
         reranked = []

@@ -80,6 +80,7 @@ class RetrievalEngine:
 
         chunks = tag_citations(top_chunks)
         # without the reranker there is no calibrated score, so top_score is None
+        # pass this to Dev 3 for the refusal threshold
         top_score = chunks[0].get("confidence") if chunks else 0.0
 
         return {

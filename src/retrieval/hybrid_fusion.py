@@ -25,6 +25,7 @@ def reciprocal_rank_fusion(dense_results, sparse_results, k=config.RRF_K):
                     "dense_rank": None,
                     "sparse_rank": None,
                 }
+            # RRF formula: only uses rank position, not raw scores
             fused[chunk_id]["rrf_score"] += 1.0 / (k + rank)
             fused[chunk_id][f"{name}_rank"] = rank    # kept for debugging / analysis
 
