@@ -2,6 +2,15 @@
 
 Modular RAG system with hybrid search (Dense + BM25), strict citation grounding, refusal thresholding, and automated evaluation.
 
+## 👥 Team
+
+| Role | Developer | Responsibility |
+| :--- | :--- | :--- |
+| Dev 1: Ingestion & Storage | Krish Dhanani | Data parsing, chunking, vector DB setup |
+| Dev 2: Hybrid Retrieval Engine | **Areej Anjum** | Dense + BM25 search, RRF fusion, cross-encoder reranking, citation tagging |
+| Dev 3: Generation & Safety | TBD | LLM prompting, citation formatting, refusal logic |
+| Dev 4: API & Evaluation | TBD | POST /ask API, evaluation suite, refusal rate metrics |
+
 ## 🚀 Quickstart
 1. Clone the repo and create virtual environment:
    ```bash
@@ -64,9 +73,36 @@ Rag-with-Citations/
 │
 ├── scripts/                   # Run & Evaluation Scripts
 │   ├── ingest_data.py         # Dev 1: Pipeline execution script to index corpus
+│   ├── eval_retrieval.py      # Dev 2: Retrieval ablation (dense vs BM25 vs hybrid vs rerank)
 │   └── evaluate_rag.py        # Dev 4: Evaluates metrics & unanswerable refusal rate
 │
 ├── .env.example               # Template for environment variables
 ├── Dockerfile                 # Container setup
 ├── README.md                  # Project overview & run instructions
 └── requirements.txt           # Project dependencies
+```
+
+## 🔎 Retrieval (Dev 2 - Areej Anjum)
+
+Pipeline: dense search (MiniLM, Chroma) + BM25 → Reciprocal Rank Fusion → cross-encoder reranking → citation tagging.
+
+```python
+from src.retrieval.retriever import RetrievalEngine
+
+engine = RetrievalEngine()                 # load once, models are cached
+result = engine.retrieve("Who is Nicolas Flamel?")
+
+result["context"]     # passages tagged [1], [2], ... ready for the prompt
+result["chunks"]      # citation_id, document, page, section, snippet, scores
+result["top_score"]   # 0..1 confidence of the best passage (for the refusal threshold)
+```
+
+Run from the repo root:
+
+```bash
+python -m src.retrieval.retriever "Who gave Harry the invisibility cloak?"   # manual check
+python -m pytest tests/test_retrieval.py                                     # unit tests
+python -m scripts.eval_retrieval                                             # Hit@5 / MRR comparison
+```
+
+All settings (models, top-k values, RRF constant) are in `src/config.py`.
