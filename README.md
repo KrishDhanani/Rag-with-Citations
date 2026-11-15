@@ -1,108 +1,79 @@
-# 📚 RAG with Citation
+# RAG with Citations
 
-Modular RAG system with hybrid search (Dense + BM25), strict citation grounding, refusal thresholding, and automated evaluation.
+Ask questions about a document collection and get an answer with citations to the retrieved passages. The pipeline combines dense search and BM25, merges their rankings with Reciprocal Rank Fusion, and reranks the candidates with a cross-encoder. Local Ollama generates the answer. The generation layer refuses when evidence is weak and checks that citation IDs refer to retrieved passages.
 
-## 👥 Team
+## Run locally
 
-| Role | Developer | Responsibility |
-| :--- | :--- | :--- |
-| Dev 1: Ingestion & Storage | Krish Dhanani | Data parsing, chunking, vector DB setup |
-| Dev 2: Hybrid Retrieval Engine | **Areej Anjum** | Dense + BM25 search, RRF fusion, cross-encoder reranking, citation tagging |
-| Dev 3: Generation & Safety | TBD | LLM prompting, citation formatting, refusal logic |
-| Dev 4: API & Evaluation | TBD | POST /ask API, evaluation suite, refusal rate metrics |
+Use Python 3.12 and Ollama. Run the commands from the repository root on the `dev-3` branch, which contains the local demo.
 
-## 🚀 Quickstart
-1. Clone the repo and create virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   ```
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. `.env` add your API keys.
-4. Run the API:
-   ```bash
-   uvicorn src.api.main:app --reload
-   ```
+On Windows, in PowerShell:
 
-## 📂 Repository Structure
-
-```text
-Rag-with-Citations/
-├── Data/
-│   ├── Any File Type          # Original corpus files (PDFs, Markdown, TXT)
-│
-├── src/
-│   ├── __init__.py
-│   ├── config.py              # Global settings, paths, DB connections & API keys
-│   │
-│   ├── ingestion/             
-│   │   ├── __init__.py
-|   |   |── ingest_data.py     # Main file to run whole ingestion process at once 
-│   │   ├── parser.py          # Document loading & markdown/text extraction
-│   │   ├── chunker.py         # Chunking and Re-Section the metadata 
-│   │   ├── vector_store.py    # Vector DB initialization & dense embedding loading
-│   │
-│   ├── retrieval/             # --- DEV 2 WORKSPACE ---
-│   │   ├── __init__.py
-│   │   ├── dense_search.py    # Vector DB query execution
-│   │   ├── sparse_search.py   # BM25 baseline search execution
-│   │   ├── hybrid_fusion.py   # RRF (Reciprocal Rank Fusion) algorithm
-│   │   ├── reranker.py        # Cross-encoder reranking engine
-│   │   └── retriever.py       # Main RetrievalEngine orchestrator
-│   │
-│   ├── generation/            # --- DEV 3 WORKSPACE ---
-│   │   ├── __init__.py
-│   │   ├── llm_client.py      # OpenAI/Claude/Ollama client interface
-│   │   ├── prompts.py         # System & RAG prompt templates with citation constraints
-│   │   ├── refusal.py         # Threshold checking & refusal decision logic
-│   │   └── generator.py       # Main GenerationEngine orchestrator
-│   │
-│   └── api/                   # --- DEV 4 WORKSPACE ---
-│       ├── __init__.py
-│       ├── main.py            # FastAPI application entry point
-│       ├── schemas.py         # Pydantic models for POST /ask request/response
-│       └── routes.py          # /ask endpoint route logic
-│
-├── tests/                     # Integration tests
-│   ├── test_retrieval.py
-│   ├── test_generation.py
-│   └── test_api.py
-│
-├── scripts/                   # Run & Evaluation Scripts
-│   ├── ingest_data.py         # Dev 1: Pipeline execution script to index corpus
-│   ├── eval_retrieval.py      # Dev 2: Retrieval ablation (dense vs BM25 vs hybrid vs rerank)
-│   └── evaluate_rag.py        # Dev 4: Evaluates metrics & unanswerable refusal rate
-│
-├── .env.example               # Template for environment variables
-├── Dockerfile                 # Container setup
-├── README.md                  # Project overview & run instructions
-└── requirements.txt           # Project dependencies
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-## 🔎 Retrieval (Dev 2 - Areej Anjum)
-
-Pipeline: dense search (MiniLM, Chroma) + BM25 → Reciprocal Rank Fusion → cross-encoder reranking → citation tagging.
-
-```python
-from src.retrieval.retriever import RetrievalEngine
-
-engine = RetrievalEngine()                 # load once, models are cached
-result = engine.retrieve("Who is Nicolas Flamel?")
-
-result["context"]     # passages tagged [1], [2], ... ready for the prompt
-result["chunks"]      # citation_id, document, page, section, snippet, scores
-result["top_score"]   # 0..1 confidence of the best passage (for the refusal threshold)
-```
-
-Run from the repo root:
+On macOS or Linux, create and activate the environment with:
 
 ```bash
-python -m src.retrieval.retriever "Who gave Harry the invisibility cloak?"   # manual check
-python -m pytest tests/test_retrieval.py                                     # unit tests
-python -m scripts.eval_retrieval                                             # Hit@5 / MRR comparison
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-All settings (models, top-k values, RRF constant) are in `src/config.py`.
+Open the Ollama app, or run `ollama serve` in a separate terminal if the server isn't running. Pull the model once, then start the demo:
+
+```bash
+ollama pull qwen2.5:7b-instruct
+python -m scripts.ask
+```
+
+Type a question and press Enter. Type `exit` to quit. For a single question, run:
+
+```bash
+python -m scripts.ask "Who is Nicolas Flamel?"
+```
+
+Flamel should return an answer with PDF citations. Try “What is Polyjuice Potion?” for an expected refusal on the current demo corpus. The demo uses the bundled Chroma index in `src/Vectorstore` and the example PDF in `src/Data`. It needs no OpenAI API key. The first run may download the retrieval models from Hugging Face. The CLI supports `--model` and `--threshold`. The default refusal cutoff of `0.5` is provisional.
+
+## Checks and evaluation
+
+```bash
+python -m pytest tests/test_generation.py tests/test_retrieval.py -q
+python -m scripts.eval_retrieval
+```
+
+The retrieval benchmark compares dense search, BM25, hybrid search, and reranking using Hit@5 and mean reciprocal rank at five. The course brief also calls for an end-to-end comparison of BM25 with a plain generation prompt against the full pipeline. Use the same questions and local model for both.
+
+Commit a hand-labeled question set for the final public corpus. Include answerable questions with supporting passages or pages, and unanswerable questions including ones that sound relevant to the corpus. Read 50 raw outputs before scoring. Report the refusal rate as **refused unanswerable questions ÷ all unanswerable questions**, alongside false refusals on answerable questions, citation quality, latency, and cost.
+
+## Submission and API status
+
+The brief requires a deployed `POST /ask` that returns an answer and citations over a public corpus, plus the question set in the repository. A separate frontend is optional under the supplied brief. Confirm that the final corpus can be shared before deploying it. The bundled Harry Potter PDF is currently used for local development.
+
+The CLI is available now. The FastAPI scaffold and full evaluation are pending. Once Dev 4 connects the route, start it locally with `python -m uvicorn src.api.main:app --reload` and try `POST /ask` through `http://127.0.0.1:8000/docs`. A deployment using this generation client needs Ollama running alongside the API on the same host.
+
+For the API integration, create the retrieval and generation engines once and pass each retrieval result to generation:
+
+```python
+from src.generation.generator import GenerationEngine
+from src.generation.llm_client import LLMClient
+from src.retrieval.retriever import RetrievalEngine
+
+retriever = RetrievalEngine()
+generator = GenerationEngine(LLMClient.from_ollama("qwen2.5:7b-instruct"), threshold=0.5)
+
+result = generator.generate(retriever.retrieve("Who is Nicolas Flamel?"))
+```
+
+The result contains `answer`, `status` (`answered` or `refused`), and `citations`. Each citation includes its ID, document, PDF page, section, and snippet. Refusals return an empty citation list.
+
+## Team
+
+| Role | Developer | Responsibility |
+| --- | --- | --- |
+| Dev 1 | Krish Dhanani | Parsing, chunking, and vector storage |
+| Dev 2 | Areej Anjum | Hybrid retrieval, reranking, and citation tagging |
+| Dev 3 | Suhaim Manna | Ollama generation, citation validation, and refusal logic |
+| Dev 4 | TBD | API, deployment, and evaluation |

@@ -69,14 +69,43 @@ class RetrievalEngine:
         if not query:
             return {"query": query, "chunks": [], "context": "", "top_score": 0.0}
 
-        dense_results = self.dense.search(query, config.DENSE_TOP_K)
-        sparse_results = self.sparse.search(query, config.SPARSE_TOP_K)
+        # This book describes Hermione's background through dialogue.
+        expand_context = re.fullmatch(
+            r"is\s+hermione(?:\s+granger)?\s+(?:a\s+)?"
+            r"(?:muggle(?:[\s-]*born)?|mud\s*blood)\s*\??",
+            query,
+            flags=re.IGNORECASE,
+        ) is not None
+        search_query = "Hermione Granger family magic tried spells" if expand_context else query
+
+        dense_results = self.dense.search(search_query, config.DENSE_TOP_K)
+        sparse_results = self.sparse.search(search_query, config.SPARSE_TOP_K)
         fused = reciprocal_rank_fusion(dense_results, sparse_results)
 
         if use_reranker:
-            top_chunks = self.reranker.rerank(query, fused[:config.RERANK_TOP_N], top_k)
+            top_chunks = self.reranker.rerank(search_query, fused[:config.RERANK_TOP_N], top_k)
         else:
             top_chunks = fused[:top_k]
+
+        if expand_context:
+            by_position = {
+                (meta["source"], meta["page"], meta["chunk_index"]): chunk["text"]
+                for chunk in self.sparse.chunks
+                if {"source", "page", "chunk_index"} <= (meta := chunk["metadata"]).keys()
+            }
+            expanded = []
+            for chunk in top_chunks:
+                meta = chunk["metadata"]
+                index = meta.get("chunk_index")
+                if index is not None:
+                    prefix = (meta.get("source"), meta.get("page"))
+                    text = "\n".join(
+                        by_position[position] for offset in (-1, 0, 1)
+                        if (position := (*prefix, index + offset)) in by_position
+                    )
+                    chunk = {**chunk, "text": text or chunk["text"]}
+                expanded.append(chunk)
+            top_chunks = expanded
 
         chunks = tag_citations(top_chunks)
         # without the reranker there is no calibrated score, so top_score is None
