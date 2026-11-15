@@ -1,27 +1,34 @@
-from openai import OpenAI
+import requests
 
-from src import config
 from src.generation.prompts import SYSTEM_PROMPT, build_user_prompt
 
 
 class LLMClient:
-    def __init__(self, model: str, *, client: OpenAI | None = None):
+    def __init__(self, model: str):
         self.model = model
-        self.client = client if client is not None else OpenAI(
-            api_key=config.OPENAI_API_KEY, timeout=30.0
-        )
+
+    @classmethod
+    def from_ollama(cls, model: str) -> "LLMClient":
+        return cls(model)
 
     def complete(self, question: str, context: str) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(question, context)},
-            ],
-            response_format={"type": "json_object"},
+        response = requests.post(
+            "http://127.0.0.1:11434/api/chat",
+            json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": build_user_prompt(question, context)},
+                ],
+                "format": "json",
+                "stream": False,
+                "options": {"temperature": 0},
+            },
+            timeout=120,
         )
-        if response.choices:
-            choice = response.choices[0]
-            if choice.finish_reason == "stop" and choice.message.content:
-                return choice.message.content
+        response.raise_for_status()
+        completion = response.json()
+        content = completion.get("message", {}).get("content")
+        if completion.get("done") and completion.get("done_reason") == "stop" and content:
+            return content
         raise ValueError("The model returned no complete answer.")

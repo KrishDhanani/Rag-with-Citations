@@ -40,6 +40,12 @@ class GenerationEngine:
         if not isinstance(answer, str):
             return _refusal()
 
+        # Normalize grouped citations such as [1, 2] before validating each ID.
+        answer = re.sub(
+            r"\[([0-9]+(?:\s*,\s*[0-9]+)+)\]",
+            lambda match: " ".join(f"[{number.strip()}]" for number in match[1].split(",")),
+            answer,
+        )
         citation_ids = list(dict.fromkeys(re.findall(r"\[[0-9]+\]", answer)))
         if not citation_ids or any(label not in sources for label in citation_ids):
             return _refusal()

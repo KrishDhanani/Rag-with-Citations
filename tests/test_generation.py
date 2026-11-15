@@ -61,9 +61,19 @@ def test_generator_skips_model_for_weak_retrieval(retrieval_result):
     client.complete.assert_not_called()
 
 
+def test_generator_normalizes_grouped_citations(retrieval_result):
+    client = Mock()
+    client.complete.return_value = '{"status": "answered", "answer": "Flamel was an alchemist [1, 2]."}'
+    result = GenerationEngine(client, threshold=0.5).generate(retrieval_result)
+
+    assert result["answer"] == "Flamel was an alchemist [1] [2]."
+    assert [citation["id"] for citation in result["citations"]] == ["[1]", "[2]"]
+
+
 @pytest.mark.parametrize("response", [
     '{"status": "refused", "answer": ""}',
     '{"status": "answered", "answer": "An alchemist [1] [9]."}',
+    '{"status": "answered", "answer": "An alchemist [1, 9]."}',
     '{"status": "answered", "answer": "An alchemist."}',
     "invalid JSON",
 ])
