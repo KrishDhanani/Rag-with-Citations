@@ -4,11 +4,13 @@ from src import config
 from src.ingestion.parser import Parser
 from src.ingestion.chunker import Chunking
 from src.ingestion.vector_store import Vector_Database
+from src.ingestion.contextualizer import Contextualizer
 
 DATA_DIR = config.BASE_DIR / "Data"
 
 
-def run_ingestion(data_dir: Path = DATA_DIR):
+def run_ingestion(data_dir: Path = DATA_DIR, *, contextual=True,
+                  context_model=config.CONTEXT_MODEL):
     files = sorted(
         path for path in data_dir.iterdir()
         if path.is_file() and path.suffix.lower() in {".pdf", ".md", ".markdown", ".txt"}
@@ -24,6 +26,8 @@ def run_ingestion(data_dir: Path = DATA_DIR):
         chunks = chunker.chunk_documents(documents)
         if not chunks:
             raise ValueError(f"No text extracted from {path.name}; check whether it needs OCR")
+        if contextual:
+            Contextualizer(context_model, config.BASE_DIR.parent / ".cache" / "contextual").enrich(documents, chunks)
         database.store_data(chunks)
         print(f"Indexed {path.name}: {len(documents)} pages/documents, {len(chunks)} chunks")
     print(f"Complete: {len(files)} files indexed.")

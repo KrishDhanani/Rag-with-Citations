@@ -1,8 +1,8 @@
 import json
-import re
 
 from src.generation.llm_client import LLMClient
 from src.generation.refusal import should_refuse
+from src.generation.citations import normalize_citations, citation_ids as get_citation_ids
 
 
 def _refusal() -> dict:
@@ -41,14 +41,24 @@ class GenerationEngine:
             return _refusal()
 
         # Normalize grouped citations such as [1, 2] before validating each ID.
-        answer = re.sub(
-            r"\[([0-9]+(?:\s*,\s*[0-9]+)+)\]",
-            lambda match: " ".join(f"[{number.strip()}]" for number in match[1].split(",")),
-            answer,
-        )
-        citation_ids = list(dict.fromkeys(re.findall(r"\[[0-9]+\]", answer)))
+        answer = normalize_citations(answer)
+        citation_ids = get_citation_ids(answer)
         if not citation_ids or any(label not in sources for label in citation_ids):
             return _refusal()
+
+        # Show the supporting quote, rather than an unrelated page opening.
+        supporting_quotes = {}
+        evidence = response.get("evidence", [])
+        for item in (evidence if isinstance(evidence, list) else []):
+            if not isinstance(item, dict):
+                continue
+            label, quote = item.get("citation_id"), item.get("quote")
+            if not isinstance(label, str) or label not in sources or not isinstance(quote, str):
+                continue
+            quote = " ".join(quote.split())
+            original = " ".join(sources[label].get("text", "").split())
+            if quote and quote in original:
+                supporting_quotes.setdefault(label, []).append(quote)
 
         citations = [
             {
@@ -56,7 +66,8 @@ class GenerationEngine:
                 "document": sources[label]["document"],
                 "page": sources[label]["page"],
                 "section": sources[label]["section"],
-                "snippet": sources[label]["snippet"],
+                "snippet": " … ".join(dict.fromkeys(supporting_quotes[label]))
+                if label in supporting_quotes else sources[label]["snippet"],
             }
             for label in citation_ids
         ]

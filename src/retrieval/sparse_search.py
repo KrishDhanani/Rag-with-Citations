@@ -4,6 +4,7 @@ import chromadb
 from rank_bm25 import BM25Okapi
 
 from src import config
+from src.ingestion.contextualizer import search_text
 
 # small stopword list, enough to stop "the", "of" ... from dominating a match
 STOPWORDS = {
@@ -43,7 +44,7 @@ class SparseSearch:
 
     def __init__(self, chunks=None):
         self.chunks = chunks if chunks is not None else load_chunks_from_chroma()
-        self.bm25 = BM25Okapi([tokenize(c["text"]) for c in self.chunks])
+        self.bm25 = BM25Okapi([tokenize(search_text(c["text"], c["metadata"])) for c in self.chunks])
 
     def search(self, query, top_k=config.SPARSE_TOP_K):
         query_tokens = tokenize(query)
