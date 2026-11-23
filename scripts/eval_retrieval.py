@@ -10,6 +10,7 @@ from src.retrieval.dense_search import DenseSearch
 from src.retrieval.sparse_search import SparseSearch
 from src.retrieval.hybrid_fusion import reciprocal_rank_fusion
 from src.retrieval.reranker import Reranker
+from src.retrieval.retriever import RetrievalEngine
 
 K = 5
 
@@ -38,13 +39,13 @@ def score(results, gold_pages):
 
 def main():
     dense, sparse, reranker = DenseSearch(), SparseSearch(), Reranker()
+    engine = RetrievalEngine(dense=dense, sparse=sparse, reranker=reranker)
 
     systems = {
         "dense only": lambda q: dense.search(q),
         "bm25 only": lambda q: sparse.search(q),
         "hybrid (RRF)": lambda q: reciprocal_rank_fusion(dense.search(q), sparse.search(q)),
-        "hybrid + rerank": lambda q: reranker.rerank(
-            q, reciprocal_rank_fusion(dense.search(q), sparse.search(q))[:config.RERANK_TOP_N], K),
+        "hybrid + rerank": lambda q: engine.retrieve(q, top_k=K)["chunks"],
     }
 
     print(f"{'system':<18}{'Hit@' + str(K):>8}{'MRR':>8}")

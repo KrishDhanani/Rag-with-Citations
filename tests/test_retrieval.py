@@ -138,3 +138,122 @@ def test_bm25_on_real_corpus():
 
     results = SparseSearch(chunks).search("Who is Nicolas Flamel?", top_k=5)
     assert any("Flamel" in r["text"] for r in results)
+
+def test_engine_includes_pdf_page_context():
+    trial = make_chunk("trial", "Try the beech wand.", page=67)
+    chosen = make_chunk("chosen", "The chosen wand was holly and phoenix feather.", page=67)
+    for index, chunk in enumerate((trial, chosen), 1):
+        chunk["metadata"].update(file_type="pdf", chunk_index=index)
+    dense = FakeDense()
+    dense.search = lambda query, top_k: [{**trial, "score": 0.9}]
+    engine = RetrievalEngine(
+        dense=dense,
+        sparse=SparseSearch([trial, chosen]),
+        reranker=Reranker(model=FakeCrossEncoder()),
+    )
+    result = engine.retrieve("beech", top_k=1)
+    assert "chosen wand was holly" in result["context"]
+    assert result["chunks"][0]["page"] == 67
+
+def test_parent_identity_follows_names_in_evidence():
+    from unittest.mock import Mock
+
+    initial = make_chunk("parents", "Nora's parents, Mira and Theo Vale, are dead.", page=10)
+    identifying = make_chunk("mother", "Nora is Mira Vale's daughter.", page=42)
+    for chunk in (initial, identifying):
+        chunk["metadata"].update(file_type="pdf", chunk_index=1)
+    dense = Mock()
+    dense.search.side_effect = [[initial], [initial], [identifying]]
+    sparse = Mock()
+    sparse.chunks = [initial, identifying]
+    sparse.search.side_effect = [[], [], [identifying]]
+    engine = RetrievalEngine(
+        dense=dense, sparse=sparse, reranker=Reranker(model=FakeCrossEncoder()),
+    )
+    result = engine.retrieve("Who is Noras mom ?")
+
+    assert result["query"] == "Who is Noras mom ?"
+    assert "Nora is Mira Vale's daughter." in result["context"]
+    assert "Mira" in sparse.search.call_args_list[-1].args[0]
+    assert "Vale" in sparse.search.call_args_list[-1].args[0]
+    assert "Nora's parents, Mira and Theo Vale, are dead." in result["context"]
+    assert result["top_score"] == result["chunks"][0]["confidence"]
+
+
+def test_parent_query_preserves_original_relationship_and_adds_variant():
+    from unittest.mock import Mock
+    dense = Mock()
+    dense.search.return_value = [TOY_CHUNKS[0]]
+    sparse = SparseSearch(TOY_CHUNKS)
+    sparse.search = Mock(return_value=[])
+    reranker = Mock()
+    reranker.rerank.return_value = [{**TOY_CHUNKS[0], "confidence": 0.75}]
+    result = RetrievalEngine(dense=dense, sparse=sparse, reranker=reranker).retrieve(
+        "Who is Nora's mom?")
+    assert [call.args[0] for call in dense.search.call_args_list] == [
+        "Who is Nora's mother?", "Who are Nora's parents?"]
+    assert reranker.rerank.call_args.args[0] == "Who is Nora's mother?"
+    assert result["query"] == "Who is Nora's mom?"
+
+
+def test_followup_uses_final_reranker_confidence():
+    from unittest.mock import Mock
+    initial = make_chunk("parents", "Nora's parents, Mira and Theo Vale, are dead.", page=10)
+    linked = make_chunk("mother", "Nora is Mira Vale's daughter.", page=42)
+    for chunk in (initial, linked):
+        chunk["metadata"].update(file_type="pdf", chunk_index=1)
+    dense = Mock()
+    dense.search.side_effect = [[initial], [initial], [linked]]
+    sparse = Mock()
+    sparse.chunks = [initial, linked]
+    sparse.search.side_effect = [[], [], [linked]]
+    reranker = Mock()
+    reranker.rerank.side_effect = [
+        [{**initial, "confidence": 0.95}],
+        [{**linked, "confidence": 0.25}, {**initial, "confidence": 0.2}],
+    ]
+    result = RetrievalEngine(dense=dense, sparse=sparse, reranker=reranker).retrieve(
+        "Who is Nora's mother?")
+    assert result["top_score"] == 0.25
+    assert {item["chunk_id"] for item in reranker.rerank.call_args.args[1]} == {"parents", "mother"}
+
+
+def test_sibling_pairs_do_not_supply_parent_name_hints():
+    siblings = make_chunk("siblings", "Nora met Fred and George Vale and their mother.")
+    parents = make_chunk("parents", "Nora was Mira and Theo Vale' s daughter.", page=2)
+    for item in (siblings, parents):
+        item["metadata"].update(file_type="pdf", chunk_index=1)
+    engine = RetrievalEngine(dense=FakeDense(), sparse=SparseSearch([siblings, parents]),
+                             reranker=Reranker(model=FakeCrossEncoder()))
+    assert engine._family_name_hints("Nora") == ["Mira", "Theo", "Vale"]
+    assert engine._family_name_hints("Other") == []
+
+
+def test_paragraph_candidates_keep_complete_page_dialogue_without_overlap():
+    from unittest.mock import Mock
+    paragraphs = [make_chunk(f"p{i}", f"Paragraph {i}.", page=67) for i in range(6)]
+    paragraphs[3]["text"] = "Paragraph 2.\n\nParagraph 3."
+    for index, chunk in enumerate(paragraphs):
+        chunk["metadata"].update(file_type="pdf", chunk_index=index,
+                                 chunking_version="paragraph-v1")
+    dense = Mock()
+    dense.search.return_value = [paragraphs[2]]
+    sparse = SparseSearch(paragraphs)
+    sparse.search = Mock(return_value=[])
+    engine = RetrievalEngine(dense=dense, sparse=sparse,
+                             reranker=Reranker(model=FakeCrossEncoder()))
+    result = engine.retrieve("Paragraph 2", top_k=1)
+    assert "Paragraph 1." in result["context"]
+    assert "Paragraph 3." in result["context"]
+    assert "Paragraph 0." in result["context"]
+    assert "Paragraph 5." in result["context"]
+    assert result["context"].count("Paragraph 2.") == 1
+
+
+def test_bm25_searches_generated_context_but_returns_original_evidence():
+    chunks = [make_chunk("wand", "He tried another one."),
+              make_chunk("dog", "A dog barked."), make_chunk("train", "A train left.")]
+    chunks[0]["metadata"]["contextual_description"] = "Harry visits Ollivanders."
+    result = SparseSearch(chunks).search("Ollivanders")
+    assert result[0]["text"] == "He tried another one."
+    assert "Ollivanders" not in build_context(tag_citations(result))

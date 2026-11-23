@@ -84,3 +84,103 @@ def test_generator_refuses_unusable_model_output(retrieval_result, response):
 
     assert result["status"] == "refused"
     assert result["citations"] == []
+
+@pytest.mark.parametrize("verdict, expected_status", [
+    ('{"supported":true,"answer":"Petunia comforted Dudley [1].",'
+     '"evidence":[{"citation_id":"[1]","quote":"Aunt Petunia comforted her son Dudley."}]}', "answered"),
+    ('{"supported": true}', "refused"),
+    ('{"supported": false}', "refused"),
+    ('{"supported": "true"}', "refused"),
+    ('invalid JSON', "refused"),
+])
+def test_llm_client_checks_draft_support(verdict, expected_status):
+    import json
+    from src.generation.llm_client import LLMClient
+
+    client = LLMClient("test-model")
+    client._chat = Mock(side_effect=[
+        '{"status":"answered","answer":"Petunia comforted Dudley [1]."}',
+        verdict,
+    ])
+    result = json.loads(client.complete(
+        "Who did Petunia comfort?", "[1] Aunt Petunia comforted her son Dudley."
+    ))
+    assert result["status"] == expected_status
+    assert client._chat.call_count == 2
+
+
+def test_verifier_can_repair_citation_without_changing_answer():
+    import json
+    from src.generation.llm_client import LLMClient
+    client = LLMClient("test-model")
+    client._chat = Mock(side_effect=[
+        json.dumps({"status": "answered", "answer": "Harry's wand is holly [2]."}),
+        json.dumps({"supported": True, "answer": "Harry's wand is holly [1].", "evidence": [
+            {"citation_id": "[1]", "quote": "Harry's wand is holly."}]}),
+    ])
+    result = json.loads(client.complete("What wood is Harry's wand?",
+        "[1] Source: book.pdf, page 67\nHarry's wand is holly.\n\n"
+        "[2] Source: book.pdf, page 68\nThe other wand is yew."))
+    assert result["status"] == "answered"
+    assert result["answer"] == "Harry's wand is holly [1]."
+    assert result["evidence"] == [{"citation_id": "[1]", "quote": "Harry's wand is holly."}]
+    verification_input = json.loads(client._chat.call_args_list[1].args[1])
+    assert verification_input["sources"]["[1]:p1"]["quote"] == "Harry's wand is holly."
+    assert client._chat.call_count == 2
+
+
+@pytest.mark.parametrize("answer,evidence", [
+    ("Harry's wand is holly [2].", [{"citation_id": "[2]", "quote": "Harry's wand is holly."}]),
+    ("Harry's wand is holly [1].", [{"citation_id": "[1]", "quote": "Harry's wand is oak."}]),
+    ("Harry's wand is oak [1].", [{"citation_id": "[1]", "quote": "Harry's wand is holly."}]),
+    ("Harry's wand is holly [1] [2].", [{"citation_id": "[1]", "quote": "Harry's wand is holly."}]),
+    ("Harry's wand is holly [9].", [{"citation_id": "[9]", "quote": "Harry's wand is holly."}]),
+    ("Harry's wand is holly [1].", [{"citation_id": "[1]", "quote": ""}]),
+])
+def test_verification_rejects_wrong_source_quotes_and_changed_facts(answer, evidence):
+    from src.generation.citations import verified_answer
+    draft = "Harry's wand is holly [2]."
+    assert verified_answer(draft, {"supported": True, "answer": answer, "evidence": evidence},
+        {"[1]": "Harry's wand is holly.", "[2]": "The other wand is yew."}) is None
+
+
+def test_source_headers_cannot_be_used_as_supporting_quotes():
+    from src.generation.citations import parse_passages
+    assert parse_passages("[1] Source: book.pdf, page 67\nOriginal evidence.") == {
+        "[1]": "Original evidence."}
+
+
+def test_citation_preview_uses_verified_quote(retrieval_result):
+    import json
+    retrieval_result["chunks"][0]["text"] = "An unrelated opening. Flamel was an alchemist."
+    client = Mock()
+    client.complete.return_value = json.dumps({"status": "answered",
+        "answer": "Flamel was an alchemist [1].", "evidence": [
+            {"citation_id": "[1]", "quote": "Flamel was an alchemist."}]})
+    result = GenerationEngine(client, threshold=0.5).generate(retrieval_result)
+    assert result["citations"][0]["snippet"] == "Flamel was an alchemist."
+
+
+def test_paragraph_selection_assigns_actual_source_page():
+    from src.generation.citations import evidence_options, resolve_evidence, verified_answer
+    passages = {"[1]": "The other wand is yew.",
+                "[2]": "Rejected trial.\n\nThe chosen wand is holly and phoenix feather."}
+    options = evidence_options(passages)
+    verdict = resolve_evidence({"supported": True, "answer": "The wand is holly [1].",
+                                "evidence_ids": ["[2]:p2"]}, options)
+    assert verdict["evidence"] == [{"citation_id": "[2]",
+        "quote": "The chosen wand is holly and phoenix feather."}]
+    assert verified_answer("The wand is holly.", verdict, passages) == "The wand is holly [2]."
+
+
+def test_unknown_paragraph_id_is_rejected():
+    from src.generation.citations import resolve_evidence
+    assert resolve_evidence({"supported": True, "answer": "A fact.", "evidence_ids": ["[9]:p1"]}, {}) == {}
+
+
+def test_missing_inline_citations_are_derived_from_verified_evidence():
+    from src.generation.citations import verified_answer
+    verdict = {"supported": True, "answer": "An alchemist.", "evidence": [
+        {"citation_id": "[1]", "quote": "Flamel was an alchemist."}]}
+    assert verified_answer("An alchemist.", verdict,
+        {"[1]": "Flamel was an alchemist."}) == "An alchemist [1]."

@@ -35,7 +35,12 @@ class Parser:
                 if page > 0 and title.strip().casefold().startswith("chapter ")
             )
             for page_num, page in enumerate(pdf, start=1):
-                text = page.get_text()
+                blocks = page.get_text("blocks", sort=True)
+                text = "\n\n".join(
+                    block[4].strip() for block in blocks
+                    if block[6] == 0 and block[4].strip()
+                    and not re.fullmatch(r"\s*\d+\s*", block[4])
+                )
                 if text.strip():
                     section_title = next(
                         (title for start, title in reversed(chapters) if start <= page_num),

@@ -16,6 +16,7 @@ COLLECTION_NAME = "rag_collection"
 # must be the same model that was used during ingestion
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+CONTEXT_MODEL = os.getenv("CONTEXT_MODEL", "qwen3:1.7b")
 
 DENSE_TOP_K = 20      # candidates taken from vector search
 SPARSE_TOP_K = 20     # candidates taken from BM25

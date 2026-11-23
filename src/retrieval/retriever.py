@@ -63,6 +63,45 @@ class RetrievalEngine:
         self.dense = dense or DenseSearch()
         self.sparse = sparse or SparseSearch()
         self.reranker = reranker or Reranker()
+        self.pages = {}
+        for chunk in self.sparse.chunks:
+            meta = chunk["metadata"]
+            if meta.get("file_type") == "pdf" and "chunk_index" in meta:
+                self.pages.setdefault((meta["source"], meta["page"]), []).append(chunk)
+        for page_chunks in self.pages.values():
+            page_chunks.sort(key=lambda item: item["metadata"]["chunk_index"])
+
+    def _search_queries(self, queries):
+        """Fuse query variants without discarding the original question."""
+        dense, sparse = None, None
+        for query in dict.fromkeys(queries):
+            next_dense = self.dense.search(query, config.DENSE_TOP_K)
+            next_sparse = self.sparse.search(query, config.SPARSE_TOP_K)
+            dense = next_dense if dense is None else reciprocal_rank_fusion(dense, next_dense)
+            sparse = next_sparse if sparse is None else reciprocal_rank_fusion(sparse, next_sparse)
+        return reciprocal_rank_fusion(dense or [], sparse or [])
+
+    def _family_name_hints(self, person):
+        """Find names in explicit parent/child constructions, never sibling pairs.
+
+        These are retrieval hints only; generation must establish the requested
+        relationship from the retrieved original passages.
+        """
+        pair = r"([A-Z][a-z]+) (?:and|an') ([A-Z][a-z]+) ([A-Z][a-z]+)"
+        patterns = [
+            pair + r"\s*['’]\s*s\s+(?:son|daughter|child)\b",
+            r"\bparents(?:\s+(?:are|were|named|called))?\s*[,\-:]?\s+" + pair,
+        ]
+        person_words = set(re.findall(r"[a-z]+", person.lower()))
+        names = set()
+        for page_chunks in self.pages.values():
+            text = " ".join(" ".join(c["text"].split()) for c in page_chunks)
+            if not person_words <= set(re.findall(r"[a-z]+", text.lower())):
+                continue
+            for pattern in patterns:
+                for match in re.finditer(pattern, text):
+                    names.update(match.groups())
+        return sorted(names)
 
     def retrieve(self, query, top_k=config.FINAL_TOP_K, use_reranker=True):
         query = query.strip()
@@ -76,41 +115,95 @@ class RetrievalEngine:
             query,
             flags=re.IGNORECASE,
         ) is not None
-        search_query = "Hermione Granger family magic tried spells" if expand_context else query
+        search_query = re.sub(r"\bmom\b|\bmum\b", "mother", query, flags=re.IGNORECASE)
+        search_query = re.sub(r"\bdad\b", "father", search_query, flags=re.IGNORECASE)
+        search_queries = [search_query]
+        if expand_context:
+            search_queries.append("Hermione Granger family magic tried spells")
+        parent_question = re.fullmatch(
+            r"who\s+is\s+(.+?)(?:['’]s|s)\s+(?:mother|father|dad)\s*\??",
+            search_query,
+            flags=re.IGNORECASE,
+        )
+        if parent_question:
+            # The corpus may identify both parents together rather than use "mother".
+            search_queries.append(f"Who are {parent_question[1]}'s parents?")
 
-        dense_results = self.dense.search(search_query, config.DENSE_TOP_K)
-        sparse_results = self.sparse.search(search_query, config.SPARSE_TOP_K)
-        fused = reciprocal_rank_fusion(dense_results, sparse_results)
+        fused = self._search_queries(search_queries)
 
         if use_reranker:
             top_chunks = self.reranker.rerank(search_query, fused[:config.RERANK_TOP_N], top_k)
         else:
             top_chunks = fused[:top_k]
 
-        if expand_context:
-            by_position = {
-                (meta["source"], meta["page"], meta["chunk_index"]): chunk["text"]
-                for chunk in self.sparse.chunks
-                if {"source", "page", "chunk_index"} <= (meta := chunk["metadata"]).keys()
-            }
-            expanded = []
-            for chunk in top_chunks:
-                meta = chunk["metadata"]
-                index = meta.get("chunk_index")
-                if index is not None:
-                    prefix = (meta.get("source"), meta.get("page"))
-                    text = "\n".join(
-                        by_position[position] for offset in (-1, 0, 1)
-                        if (position := (*prefix, index + offset)) in by_position
-                    )
-                    chunk = {**chunk, "text": text or chunk["text"]}
-                expanded.append(chunk)
-            top_chunks = expanded
+        # Keep page-local narrative context so a trial isn't mistaken for a choice.
+        pages = self.pages
+        expanded = []
+        seen_pages = set()
+        for chunk in top_chunks:
+            meta = chunk["metadata"]
+            page_key = (meta.get("source"), meta.get("page"))
+            page_chunks = pages.get(page_key)
+            if meta.get("chunking_version") == "paragraph-v1" and page_chunks:
+                if page_key in seen_pages:
+                    continue
+                seen_pages.add(page_key)
+                paragraphs = list(dict.fromkeys(
+                    paragraph for item in page_chunks
+                    for paragraph in item["text"].split("\n\n")
+                ))
+                expanded.append({**chunk, "text": "\n\n".join(paragraphs)})
+                continue
+            if page_chunks:
+                if page_key in seen_pages:
+                    continue
+                seen_pages.add(page_key)
+                page_chunks = sorted(page_chunks, key=lambda item: item["metadata"]["chunk_index"])
+                chunk = {**chunk, "text": "\n".join(item["text"] for item in page_chunks)}
+            expanded.append(chunk)
+        top_chunks = expanded
 
+        if parent_question:
+            names = self._family_name_hints(parent_question[1])
+            if names:
+                followup_query = f"{search_query} {' '.join(names)}"
+                linked = []
+                for chunk in self._search_queries([followup_query]):
+                    words = set(re.findall(r"[a-z]+", chunk["text"].lower()))
+                    if sum(name.lower() in words for name in names) < 2:
+                        continue
+                    meta = chunk["metadata"]
+                    for page_number in (meta["page"], meta["page"] - 1):
+                        key = (meta["source"], page_number)
+                        if key in pages and key not in {(item["metadata"]["source"], item["metadata"]["page"]) for item in linked}:
+                            ordered = sorted(pages[key], key=lambda item: item["metadata"]["chunk_index"])
+                            linked.append({
+                                **chunk,
+                                "metadata": ordered[0]["metadata"],
+                                "chunk_id": ordered[0]["chunk_id"],
+                                "text": "\n".join(item["text"] for item in ordered),
+                            })
+                if linked:
+                    # Name matches supplement the relationship evidence; they
+                    # must not replace it or inherit its old confidence score.
+                    combined, seen = [], set()
+                    for chunk in top_chunks + linked:
+                        meta = chunk["metadata"]
+                        key = (meta.get("source"), meta.get("page"))
+                        if key not in seen:
+                            seen.add(key)
+                            combined.append(chunk)
+                    if use_reranker:
+                        top_chunks = self.reranker.rerank(
+                            followup_query, combined[:config.RERANK_TOP_N], top_k,
+                        )
+                    else:
+                        top_chunks = combined[:top_k]
+
+        top_score = top_chunks[0].get("confidence") if top_chunks else 0.0
         chunks = tag_citations(top_chunks)
         # without the reranker there is no calibrated score, so top_score is None
         # pass this to Dev 3 for the refusal threshold
-        top_score = chunks[0].get("confidence") if chunks else 0.0
 
         return {
             "query": query,
