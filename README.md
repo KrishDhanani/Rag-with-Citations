@@ -77,3 +77,18 @@ The result contains `answer`, `status` (`answered` or `refused`), and `citations
 | Dev 2 | Areej Anjum | Hybrid retrieval, reranking, and citation tagging |
 | Dev 3 | Suhaim Manna | Ollama generation, citation validation, and refusal logic |
 | Dev 4 | TBD | API, deployment, and evaluation |
+
+## Add more books
+
+Place each book in a separate PDF file in `src/Data`, with a distinct filename. Stop the interactive question session before indexing. From the repository root, run:
+
+```powershell
+python -m scripts.ingest_data
+python -m scripts.ask
+```
+
+The ingestion command scans the folder, embeds documents in batches, and updates the shared Chroma collection. Re-running it replaces the processed source's obsolete records and removes its legacy duplicates. Run one ingestion process at a time. If ingestion fails, rerun it to finish before restarting the question service. Removing a file from the folder does not remove that source from the index.
+
+PDF chapter bookmarks are stored as chapter and section metadata where available. PDFs without chapter bookmarks use the existing text-heading fallback. Scanned PDFs require text extraction/OCR before ingestion. Restart the CLI after indexing so its BM25 index includes the added books.
+
+Only book 1 was present when this workflow was added. Supply the remaining six book files to index the full series. Expanding the corpus changes which questions are answerable, so relabel the evaluation set against the final corpus and rerun retrieval and refusal evaluation.
