@@ -37,7 +37,7 @@ class Chunking:
                 chunk_text = split_doc.page_content
                 
                 header_match = re.search(r'^(#+\s+(.+)|[A-Z\s]{4,})$', chunk_text, re.MULTILINE)    # Finding new header if any
-                if header_match:
+                if header_match and not doc.metadata.get("chapter"):
                     current_section = header_match.group(2) or header_match.group(1).strip()
                 
                 safe_source_name = source_name.rsplit('.', 1)[0].replace(" ", "_")  # Unique vhunk id creation
