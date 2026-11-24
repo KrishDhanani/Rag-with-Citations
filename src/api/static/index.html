@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask the book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --lamp: #1E3B2F;        /* banker's-lamp green, page background */
+    --lamp-deep: #162C23;
+    --brass: #C9A44C;       /* page numbers, focus, active states */
+    --paper: #E8EAE3;       /* answer sheet */
+    --ink: #1B201D;
+    --ink-soft: #4C5650;
+    --slate: #8796A8;       /* refusals */
+    --line: rgba(232, 234, 227, .14);
+    --serif: "Literata", Georgia, serif;
+    --sans: "Work Sans", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--lamp); }
+  body {
+    margin: 0; min-height: 100vh; color: var(--paper);
+    font: 16px/1.5 var(--sans);
+    background:
+      radial-gradient(ellipse 70% 45% at 50% -5%, rgba(201,164,76,.16), transparent 70%),
+      var(--lamp);
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 72px 24px 96px; }
+
+  /* ---------- header ---------- */
+  h1 {
+    font: 600 clamp(2.6rem, 6vw, 3.6rem)/1.05 var(--serif);
+    letter-spacing: -.02em; margin: 0 0 12px;
+  }
+  .lede { color: rgba(232,234,227,.72); margin: 0 0 40px; max-width: 34em; }
+
+  /* ---------- ask form ---------- */
+  form { position: relative; }
+  .field {
+    display: flex; gap: 8px; align-items: stretch;
+    background: var(--paper); border-radius: 14px; padding: 8px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 18px 40px -18px rgba(0,0,0,.55);
+  }
+  .field textarea {
+    flex: 1; border: 0; resize: none; background: transparent; color: var(--ink);
+    font: 1.15rem/1.45 var(--serif); padding: 12px 12px; min-height: 52px; max-height: 180px;
+  }
+  .field textarea::placeholder { color: #8A938D; }
+  .field textarea:focus { outline: none; }
+  .field:focus-within { box-shadow: 0 0 0 3px var(--brass), 0 18px 40px -18px rgba(0,0,0,.55); }
+  button {
+    font: 600 .95rem var(--sans); cursor: pointer; border: 0; border-radius: 10px;
+  }
+  .ask {
+    background: var(--lamp); color: var(--paper); padding: 0 22px;
+    transition: background .15s;
+  }
+  .ask:hover { background: var(--lamp-deep); }
+  .ask:disabled { opacity: .55; cursor: progress; }
+  button:focus-visible, .chip:focus-visible, .cite:focus-visible {
+    outline: 3px solid var(--brass); outline-offset: 2px;
+  }
+
+  .controls {
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+    gap: 16px; margin-top: 16px;
+  }
+  .mode { display: inline-flex; background: var(--lamp-deep); border-radius: 999px; padding: 4px; }
+  .mode label { position: relative; }
+  .mode input { position: absolute; opacity: 0; }
+  .mode span {
+    display: block; padding: 6px 14px; border-radius: 999px; font-size: .85rem;
+    color: rgba(232,234,227,.7); cursor: pointer; transition: background .15s, color .15s;
+  }
+  .mode input:checked + span { background: var(--brass); color: var(--ink); font-weight: 600; }
+  .mode input:focus-visible + span { outline: 2px solid var(--paper); }
+  .hint { font-size: .85rem; color: rgba(232,234,227,.55); }
+
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+  .examples p { width: 100%; margin: 0 0 4px; font-size: .85rem; color: rgba(232,234,227,.55); }
+  .chip {
+    background: transparent; color: rgba(232,234,227,.85); border: 1px solid var(--line);
+    padding: 7px 12px; font: 400 .88rem var(--sans); border-radius: 999px;
+  }
+  .chip:hover { border-color: var(--brass); color: var(--paper); }
+
+  /* ---------- results ---------- */
+  #results { margin-top: 48px; display: grid; gap: 28px; }
+
+  .sheet {
+    background: var(--paper); color: var(--ink); border-radius: 16px;
+    padding: 28px 30px 24px; box-shadow: 0 24px 50px -28px rgba(0,0,0,.7);
+    animation: arrive .35s ease-out;
+  }
+  @keyframes arrive { from { opacity: 0; transform: translateY(8px); } }
+  .question {
+    font: italic 400 1.05rem/1.4 var(--serif); color: var(--ink-soft); margin: 0 0 16px;
+  }
+  .answer { font: 400 1.2rem/1.7 var(--serif); margin: 0; }
+  .answer sup { line-height: 0; }
+  .cite {
+    font: 600 .72rem var(--sans); background: var(--lamp); color: var(--brass);
+    border-radius: 6px; padding: 2px 6px; margin: 0 2px; vertical-align: .35em;
+  }
+  .cite:hover { background: var(--lamp-deep); }
+
+  .sources { margin-top: 24px; border-top: 1px solid #D3D7CE; padding-top: 18px; display: grid; gap: 12px; }
+  .slip {
+    display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: start;
+    padding: 10px; margin: -10px; border-radius: 10px; transition: background .25s;
+  }
+  .slip.flash { background: #F6E9C4; }
+  .page {
+    text-align: center; background: var(--lamp); color: var(--brass); border-radius: 10px;
+    padding: 8px 0 6px; font: 600 1.35rem/1 var(--serif);
+  }
+  .page small { display: block; font: 500 .65rem var(--sans); color: rgba(232,234,227,.7); margin-bottom: 4px; }
+  .slip-label { font: 600 .82rem var(--sans); color: var(--ink-soft); margin: 2px 0 4px; }
+  .snippet { margin: 0; font: 400 .95rem/1.55 var(--serif); color: var(--ink); }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 20px;
+    font-size: .8rem; color: var(--ink-soft);
+  }
+  .meta b { font-weight: 600; color: var(--ink); }
+
+  /* refusal: deliberately quieter, a closed book rather than an error */
+  .sheet.refused { background: #DCE1E6; }
+  .refusal { display: flex; gap: 16px; align-items: flex-start; }
+  .refusal svg { flex: none; margin-top: 4px; }
+  .refusal h2 { font: 600 1.2rem/1.3 var(--serif); margin: 0 0 4px; }
+  .refusal p { margin: 0; color: var(--ink-soft); }
+
+  .sheet.error { background: #F2DCD6; }
+  .sheet.error h2 { font: 600 1.1rem var(--serif); margin: 0 0 6px; color: #7A2617; }
+  .sheet.error p { margin: 0; color: #4A2A23; }
+  .sheet.error code { background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px; }
+
+  /* ---------- loader ---------- */
+  .loading { display: flex; align-items: center; gap: 18px; }
+  .pages { position: relative; width: 44px; height: 34px; flex: none; }
+  .pages i {
+    position: absolute; top: 0; right: 0; width: 22px; height: 34px; background: var(--lamp);
+    border-radius: 2px 6px 6px 2px; transform-origin: left center;
+    animation: turn 1.4s cubic-bezier(.45,.05,.55,.95) infinite;
+  }
+  .pages i:nth-child(2) { animation-delay: .23s; background: #2D5443; }
+  .pages i:nth-child(3) { animation-delay: .46s; background: var(--brass); }
+  .pages::before {
+    content: ""; position: absolute; left: 0; top: 0; width: 22px; height: 34px;
+    background: var(--lamp); border-radius: 6px 2px 2px 6px;
+  }
+  @keyframes turn {
+    0%, 15% { transform: rotateY(0); }
+    55%, 100% { transform: rotateY(-180deg); }
+  }
+  .loading h2 { font: 600 1.1rem var(--serif); margin: 0; }
+  .loading p { margin: 2px 0 0; font-size: .9rem; color: var(--ink-soft); }
+
+  footer { margin-top: 64px; font-size: .8rem; color: rgba(232,234,227,.45); }
+
+  @media (max-width: 560px) {
+    main { padding-top: 48px; }
+    .field { flex-direction: column; }
+    .ask { padding: 14px; }
+    .sheet { padding: 22px 20px 20px; }
+    .slip { grid-template-columns: 52px 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ask the book</h1>
+  <p class="lede">Answers come only from the indexed documents, with the page each one is taken from. When the sources don't cover a question, you get a refusal instead of a guess.</p>
+
+  <form id="ask-form">
+    <div class="field">
+      <textarea id="q" rows="1" maxlength="1000" placeholder="Ask a question about the book…" aria-label="Your question" required></textarea>
+      <button class="ask" id="ask-btn" type="submit">Ask</button>
+    </div>
+    <div class="controls">
+      <div class="mode" role="radiogroup" aria-label="Retrieval">
+        <label><input type="radio" name="mode" value="full" checked><span>Full pipeline</span></label>
+        <label><input type="radio" name="mode" value="bm25_baseline"><span>BM25 baseline</span></label>
+      </div>
+      <span class="hint">Enter to ask · Shift + Enter for a new line</span>
+    </div>
+  </form>
+
+  <div class="examples" id="examples">
+    <p>Try one</p>
+  </div>
+
+  <section id="results" aria-live="polite"></section>
+
+  <footer>RAG with Citations · THWS NLP Portfolio 1</footer>
+</main>
+
+<script>
+const EXAMPLES = [
+  "Who is Nicolas Flamel?",
+  "What does the Mirror of Erised show?",
+  "What is Harry's wand made of?",
+  "What is Polyjuice Potion?",
+  "What is the capital of France?",
+];
+
+const form = document.getElementById("ask-form");
+const input = document.getElementById("q");
+const btn = document.getElementById("ask-btn");
+const results = document.getElementById("results");
+const examples = document.getElementById("examples");
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children.flat()) node.append(c instanceof Node ? c : document.createTextNode(c));
+  return node;
+}
+
+EXAMPLES.forEach(text => examples.append(
+  el("button", { type: "button", class: "chip", onclick: () => { input.value = text; autosize(); ask(); } }, text)
+));
+
+function autosize() {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 180) + "px";
+}
+input.addEventListener("input", autosize);
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+});
+form.addEventListener("submit", e => { e.preventDefault(); ask(); });
+
+// The answer marks sources as [1], [2] ... turn them into buttons that point at the slip.
+function renderAnswer(text, sheetId) {
+  const p = el("p", { class: "answer" });
+  for (const part of text.split(/(\[\d+\])/g)) {
+    const m = part.match(/^\[(\d+)\]$/);
+    if (m) {
+      p.append(el("sup", {}, el("button", {
+        type: "button", class: "cite", "aria-label": `Show source ${m[1]}`,
+        onclick: () => {
+          const slip = document.getElementById(`${sheetId}-src-${m[1]}`);
+          if (!slip) return;
+          slip.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          slip.classList.add("flash");
+          setTimeout(() => slip.classList.remove("flash"), 1200);
+        },
+      }, m[1])));
+    } else if (part) {
+      p.append(part);
+    }
+  }
+  return p;
+}
+
+function seconds(ms) { return (ms / 1000).toFixed(1) + " s"; }
+const modeName = m => m === "bm25_baseline" ? "BM25 baseline" : "Full pipeline";
+
+function answeredSheet(q, data, id) {
+  const sources = data.citations.map(c => {
+    const n = c.id.replace(/\D/g, "");
+    return el("div", { class: "slip", id: `${id}-src-${n}` },
+      el("div", { class: "page" }, el("small", {}, "page"), String(c.page ?? "–")),
+      el("div", {},
+        el("p", { class: "slip-label" }, `Source ${n} · ${c.document}`),
+        el("p", { class: "snippet" }, c.snippet)));
+  });
+  return el("article", { class: "sheet", id },
+    el("p", { class: "question" }, q),
+    renderAnswer(data.answer, id),
+    sources.length ? el("div", { class: "sources" }, sources) : "",
+    el("div", { class: "meta" },
+      el("span", {}, el("b", {}, "Answered"), " from ", String(data.citations.length),
+         data.citations.length === 1 ? " source" : " sources"),
+      el("span", {}, modeName(data.mode)),
+      el("span", {}, seconds(data.latency_ms))));
+}
+
+function refusedSheet(q, data, id) {
+  const icon = new DOMParser().parseFromString(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+       <rect x="5" y="4" width="22" height="27" rx="3" stroke="#4C5650" stroke-width="2"/>
+       <path d="M10 4v27" stroke="#4C5650" stroke-width="2"/>
+       <path d="M15 13h7M15 18h5" stroke="#8796A8" stroke-width="2" stroke-linecap="round"/>
+     </svg>`, "image/svg+xml").documentElement;
+  return el("article", { class: "sheet refused", id },
+    el("p", { class: "question" }, q),
+    el("div", { class: "refusal" }, icon,
+      el("div", {},
+        el("h2", {}, "Not in the sources"),
+        el("p", {}, "The indexed documents don't contain enough to answer this, so no answer was made up."))),
+    el("div", { class: "meta" },
+      el("span", {}, el("b", {}, "Refused")),
+      el("span", {}, modeName(data.mode)),
+      el("span", {}, seconds(data.latency_ms))));
+}
+
+function errorSheet(q, title, detail) {
+  return el("article", { class: "sheet error" },
+    el("p", { class: "question" }, q),
+    el("h2", {}, title),
+    el("p", {}, detail));
+}
+
+async function ask() {
+  const q = input.value.trim();
+  if (!q || btn.disabled) return;
+  const mode = form.querySelector("input[name=mode]:checked").value;
+  const id = "a" + Date.now();
+
+  const timer = el("p", {}, "Searching the pages · 0 s");
+  const loader = el("article", { class: "sheet", id },
+    el("p", { class: "question" }, q),
+    el("div", { class: "loading", role: "status" },
+      el("div", { class: "pages", "aria-hidden": "true" }, el("i"), el("i"), el("i")),
+      el("div", {}, el("h2", {}, "Reading the sources"), timer)));
+  results.prepend(loader);
+  btn.disabled = true; btn.textContent = "Asking…";
+
+  const started = performance.now();
+  const tick = setInterval(() => {
+    const s = Math.round((performance.now() - started) / 1000);
+    timer.textContent = (s < 3 ? "Searching the pages" : "Writing the answer") + ` · ${s} s`;
+  }, 500);
+
+  let sheet;
+  try {
+    const res = await fetch("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, mode }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = typeof data.detail === "string" ? data.detail
+        : res.status === 422 ? "The question is empty or longer than 1000 characters."
+        : `The server answered with status ${res.status}.`;
+      sheet = errorSheet(q, res.status === 503 ? "The answer service isn't ready" : "Couldn't get an answer", detail);
+    } else {
+      sheet = data.status === "refused" ? refusedSheet(q, data, id) : answeredSheet(q, data, id);
+    }
+  } catch {
+    sheet = errorSheet(q, "Can't reach the API",
+      "Start it with: python -m uvicorn src.api.main:app --reload, then ask again.");
+  } finally {
+    clearInterval(tick);
+    btn.disabled = false; btn.textContent = "Ask";
+  }
+  loader.replaceWith(sheet);
+  input.value = ""; autosize(); input.focus();
+}
+</script>
+</body>
+</html>
