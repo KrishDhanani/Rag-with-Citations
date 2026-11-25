@@ -5,15 +5,12 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-
-# ---- Retrieval settings (Dev 2) ----
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 VECTOR_DB_DIR = BASE_DIR / "Vectorstore"
 COLLECTION_NAME = "rag_collection"
 
-# must be the same model that was used during ingestion
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 CONTEXT_MODEL = os.getenv("CONTEXT_MODEL", "qwen3:1.7b")
