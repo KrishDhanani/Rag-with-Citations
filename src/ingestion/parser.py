@@ -30,10 +30,22 @@ class Parser:
     def parse_pdf(self, file_path: Path) -> List[Document]:
         docs = []
         with pymupdf.open(file_path) as pdf:
+            chapters = sorted(
+                (page, title.strip()) for _, title, page in pdf.get_toc()
+                if page > 0 and title.strip().casefold().startswith("chapter ")
+            )
             for page_num, page in enumerate(pdf, start=1):
-                text = page.get_text()
+                blocks = page.get_text("blocks", sort=True)
+                text = "\n\n".join(
+                    block[4].strip() for block in blocks
+                    if block[6] == 0 and block[4].strip()
+                    and not re.fullmatch(r"\s*\d+\s*", block[4])
+                )
                 if text.strip():
-                    section_title = self._extract_section_heading(text)
+                    section_title = next(
+                        (title for start, title in reversed(chapters) if start <= page_num),
+                        self._extract_section_heading(text),
+                    )
                     docs.append(
                         Document(
                             page_content=text,
@@ -41,7 +53,8 @@ class Parser:
                                 "source": file_path.name,
                                 "file_type": "pdf",
                                 "page": page_num,
-                                "section": section_title
+                                "section": section_title,
+                                "chapter": section_title if section_title.casefold().startswith("chapter ") else "",
                             }
                         )
                     )
