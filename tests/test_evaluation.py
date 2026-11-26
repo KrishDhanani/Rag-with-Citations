@@ -111,3 +111,12 @@ def test_repo_question_set_is_valid():
     questions = load_questions(__import__("pathlib").Path("eval/questions.jsonl"))
     assert any(q["answerable"] for q in questions)
     assert any(not q["answerable"] for q in questions)
+
+
+def test_balanced_subset_mixes_answerable_and_unanswerable():
+    from scripts.evaluate_rag import balanced_subset
+    qs = [{"id": f"a{i}", "answerable": True} for i in range(5)] + \
+         [{"id": f"u{i}", "answerable": False} for i in range(3)]
+    picked = balanced_subset(qs, 6)
+    assert [q["id"] for q in picked] == ["a0", "u0", "a1", "u1", "a2", "u2"]
+    assert len(balanced_subset(qs, 20)) == 8

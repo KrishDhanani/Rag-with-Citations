@@ -1,9 +1,24 @@
 import json
+import os
 
 import requests
 
 from src.generation.prompts import SYSTEM_PROMPT, build_user_prompt
-from src.generation.citations import parse_passages, verified_answer, evidence_options, resolve_evidence
+from src.generation.citations import (
+    parse_passages, verified_answer, evidence_options, resolve_evidence, grounded_draft,
+)
+
+# When to run the second (verification) LLM call:
+#   "fallback" (default) only when the first answer's own quotes cannot be found in
+#              the cited passages; a grounded first answer is accepted directly
+#   "always"   verify every answer (the previous behaviour; slower, stricter)
+#   "off"      never verify; refuse when the first answer is not grounded
+VERIFY_MODES = ("fallback", "always", "off")
+
+
+def verify_mode() -> str:
+    mode = os.getenv("RAG_VERIFY", "fallback").strip().lower()
+    return mode if mode in VERIFY_MODES else "fallback"
 
 
 class LLMClient:
@@ -27,6 +42,16 @@ class LLMClient:
         passages = parse_passages(context)
         if not passages:
             return json.dumps({"status": "refused", "answer": ""})
+
+        mode = verify_mode()
+        if mode != "always":
+            answer = grounded_draft(draft, passages)
+            if answer is not None:
+                return json.dumps({"status": "answered", "answer": answer,
+                                   "evidence": draft["evidence"]})
+            if mode == "off":
+                return json.dumps({"status": "refused", "answer": ""})
+
         options = evidence_options(passages)
         verification = self._chat(
             "Check whether the proposed answer to the question is explicitly supported "

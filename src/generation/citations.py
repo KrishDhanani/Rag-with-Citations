@@ -1,5 +1,6 @@
 """Structural citation checks shared by generation and verification."""
 import re
+import unicodedata
 
 
 def normalize_citations(answer):
@@ -60,6 +61,90 @@ def resolve_evidence(verdict, options):
     punctuation = answer[-1] if answer[-1:] in (".", "!", "?") else ""
     body = answer[:-1].rstrip() if punctuation else answer
     return {**verdict, "answer": f"{body} {' '.join(labels)}{punctuation}", "evidence": evidence}
+
+
+MIN_QUOTE_WORDS = 4
+
+
+def _loose(text):
+    """Text for quote matching: same words in the same order, ignoring case,
+    punctuation, curly vs straight quotes, and hyphens split across PDF lines."""
+    text = unicodedata.normalize("NFKC", text).replace("\u00ad", "")
+    text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)   # "Sorcer- er's" -> "Sorcerer's"
+    text = re.sub(r"[^\w\s]", "", text.lower())
+    return " ".join(text.split())
+
+
+MAX_GAP_WORDS = 5
+NEGATIONS = {"not", "no", "never", "nor", "none", "nothing", "nobody", "cannot",
+             "dont", "doesnt", "didnt", "isnt", "wasnt", "arent", "werent", "cant",
+             "couldnt", "wont", "wouldnt", "shouldnt", "hasnt", "havent", "hadnt"}
+
+
+def quote_in_passage(quote, passage):
+    """True if the quote's words appear in the passage in the same order, either
+    continuously or with one short interruption (e.g. a dialogue tag such as
+    'she whispered'). The skipped words may not include a negation."""
+    q, p = _loose(quote).split(), _loose(passage).split()
+    if not q:
+        return False
+    if f" {' '.join(q)} " in f" {' '.join(p)} ":
+        return True
+    for start in range(len(p) - len(q) + 1):
+        if p[start] != q[0]:
+            continue
+        for split in range(1, len(q)):          # q[:split] + gap + q[split:]
+            head, tail = q[:split], q[split:]
+            if p[start:start + split] != head:
+                break
+            after = start + split
+            for gap in range(1, MAX_GAP_WORDS + 1):
+                skipped = p[after:after + gap]
+                if NEGATIONS.intersection(skipped):
+                    break
+                if p[after + gap:after + gap + len(tail)] == tail:
+                    return True
+    return False
+
+
+def grounded_draft(draft, passages):
+    """Accept the first answer without a verifier call when it is already grounded.
+
+    Every evidence quote must appear in its own cited passage (same words in the
+    same order, allowing one short interruption such as a dialogue tag;
+    punctuation and letter case are ignored), be at least
+    MIN_QUOTE_WORDS words long, and every citation in the answer must have such a
+    quote. The answer text itself is never changed; missing [n] labels are added
+    from the evidence. Returns the labelled answer, or None to fall back to the
+    LLM verifier.
+    """
+    if not isinstance(draft, dict) or draft.get("status") != "answered":
+        return None
+    answer, evidence = draft.get("answer"), draft.get("evidence")
+    if not isinstance(answer, str) or not answer.strip():
+        return None
+    if not isinstance(evidence, list) or not evidence:
+        return None
+    grounded = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            return None
+        label, quote = item.get("citation_id"), item.get("quote")
+        if not isinstance(label, str) or label not in passages or not isinstance(quote, str):
+            return None
+        if len(quote.split()) < MIN_QUOTE_WORDS:
+            return None
+        if not quote_in_passage(quote, passages[label]):
+            return None
+        grounded.append(label)
+    grounded = list(dict.fromkeys(grounded))
+    answer = normalize_citations(answer).strip()
+    labels = citation_ids(answer)
+    if labels:
+        return answer if set(labels) == set(grounded) else None
+    punctuation = answer[-1] if answer[-1:] in (".", "!", "?") else ""
+    body = answer[:-1].rstrip() if punctuation else answer
+    return f"{body} {' '.join(grounded)}{punctuation}"
 
 
 def verified_answer(draft, verdict, passages):

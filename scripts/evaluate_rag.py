@@ -71,6 +71,19 @@ def load_questions(path: Path) -> list[dict]:
     return questions
 
 
+def balanced_subset(questions: list[dict], n: int) -> list[dict]:
+    """First n questions, taking answerable and unanswerable ones in turn, so a
+    quick run still measures both refusals and false refusals."""
+    answerable = [q for q in questions if q["answerable"]]
+    unanswerable = [q for q in questions if not q["answerable"]]
+    picked = []
+    while len(picked) < n and (answerable or unanswerable):
+        for group in (answerable, unanswerable):
+            if group and len(picked) < n:
+                picked.append(group.pop(0))
+    return picked
+
+
 # ---- running the systems ----------------------------------------------------
 def run_system(pipeline, questions: list[dict], mode: str, threshold: float) -> list[dict]:
     records = []
@@ -165,7 +178,7 @@ def write_summary_md(summary: dict, path: Path):
     s = summary
     lines = [f"# Evaluation results ({s['run_at']})", "",
              f"Questions: {s['n_questions']} · model: `{s['model']}` · "
-             f"refusal threshold: {s['threshold']} · k = {s['k']}", ""]
+             f"refusal threshold: {s['threshold']} · verification: {s.get('verify_mode', '–')} · k = {s['k']}", ""]
 
     lines += ["## End-to-end", "",
               "| System | Refusal rate ↑ | False refusals ↓ | Citation hit ↑ | "
@@ -210,6 +223,7 @@ def write_summary_md(summary: dict, path: Path):
 # ---- main ----------------------------------------------------------------------
 def main(argv=None):
     from src.api.pipeline import DEFAULT_MODEL, DEFAULT_THRESHOLD, MODES
+    from src.generation.llm_client import verify_mode
 
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -218,14 +232,15 @@ def main(argv=None):
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--k", type=int, default=5, help="cut-off for Hit@k / MRR")
-    parser.add_argument("--limit", type=int, help="only the first N questions (smoke test)")
+    parser.add_argument("--limit", type=int,
+                        help="only N questions, half answerable and half unanswerable (quick test)")
     parser.add_argument("--skip-retrieval", action="store_true",
                         help="skip the retrieval-only ablation")
     args = parser.parse_args(argv)
 
     questions = load_questions(args.questions)
     if args.limit:
-        questions = questions[:args.limit]
+        questions = balanced_subset(questions, args.limit)
     n_ans = sum(q["answerable"] for q in questions)
     print(f"{len(questions)} questions ({n_ans} answerable, {len(questions) - n_ans} unanswerable)")
 
@@ -254,6 +269,7 @@ def main(argv=None):
 
     summary = {
         "run_at": run_at, "model": args.model, "threshold": args.threshold, "k": args.k,
+        "verify_mode": verify_mode(),
         "questions_file": str(args.questions), "n_questions": len(questions),
         "systems": systems,
     }
