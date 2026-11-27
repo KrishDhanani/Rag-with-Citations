@@ -78,7 +78,45 @@ Commit a hand-labeled question set for the final public corpus. Include answerab
 
 The brief requires a deployed `POST /ask` that returns an answer and citations over a public corpus, plus the question set in the repository. A separate frontend is optional under the supplied brief. Confirm that the final corpus can be shared before deploying it. The bundled Harry Potter PDF is currently used for local development.
 
-The CLI is available now. The FastAPI scaffold and full evaluation are pending. Once Dev 4 connects the route, start it locally with `python -m uvicorn src.api.main:app --reload` and try `POST /ask` through `http://127.0.0.1:8000/docs`. A deployment using this generation client needs Ollama running alongside the API on the same host.
+Deployment is still open: the API needs Ollama running on the same host.
+
+## API (Dev 4)
+
+Start the API from the repository root while Ollama is running:
+
+```bash
+python -m uvicorn src.api.main:app --reload
+```
+
+Open `http://127.0.0.1:8000/docs` to try it in the browser, or call it directly:
+
+```bash
+curl -X POST http://127.0.0.1:8000/ask -H "Content-Type: application/json" \
+     -d '{"question": "Who is Nicolas Flamel?"}'
+```
+
+Response:
+
+```json
+{
+  "answer": "Nicolas Flamel is ... [1].",
+  "status": "answered",
+  "citations": [{"id": "[1]", "document": "...pdf", "page": 177, "section": "...", "snippet": "..."}],
+  "mode": "full",
+  "latency_ms": 2140.5
+}
+```
+
+`status` is `answered` or `refused`. Refusals return an empty citation list. Set `"mode": "bm25_baseline"` to answer with BM25 retrieval only, for comparison. `GET /health` reports whether the models loaded. The environment variables `RAG_LLM_MODEL` and `RAG_REFUSAL_THRESHOLD` (default `0.5`) override the model and the refusal cutoff.
+
+## Evaluation (Dev 4)
+
+```bash
+python -m scripts.evaluate_rag --limit 5   # quick check
+python -m scripts.evaluate_rag             # full run
+```
+
+This runs every question in `eval/questions.jsonl` through the full pipeline and the BM25 baseline. It reports the refusal rate, false refusals, citation accuracy, latency, a threshold sweep, and retrieval Hit@5 and MRR. Results go to `eval/results/<timestamp>/`. Read `review_sample.md` before trusting `summary.md`. See `eval/README.md` for the question format and metric definitions.
 
 For the API integration, create the retrieval and generation engines once and pass each retrieval result to generation:
 
@@ -119,7 +157,7 @@ expectation applies only to the current Book 1 corpus; update it if adding books
 | Dev 1 | Krish Dhanani | Parsing, chunking, and vector storage |
 | Dev 2 | Areej Anjum | Hybrid retrieval, reranking, and citation tagging |
 | Dev 3 | Suhaim Manna | Ollama generation, citation validation, and refusal logic |
-| Dev 4 | TBD | API, deployment, and evaluation |
+| Dev 4 | Muhammad Talha Khan | API, deployment, and evaluation |
 
 ## Add more books
 

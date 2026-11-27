@@ -1,0 +1,97 @@
+{
+  "run_at": "2026-11-25_20-54",
+  "model": "qwen2.5:7b-instruct",
+  "threshold": 0.5,
+  "k": 5,
+  "verify_mode": "fallback",
+  "questions_file": "C:\\Users\\user\\Rag-with-Citations\\eval\\questions.jsonl",
+  "n_questions": 8,
+  "systems": {
+    "full": {
+      "answers": {
+        "n_answerable": 3,
+        "n_unanswerable": 2,
+        "refusal_rate": 1.0,
+        "false_refusal_rate": 0.3333,
+        "answer_rate": 0.6667,
+        "citation_hit_rate": 1.0,
+        "citation_precision": 1.0
+      },
+      "refusal_by_category": {
+        "near_miss": {
+          "n": 2,
+          "refusal_rate": 1.0
+        }
+      },
+      "latency": {
+        "mean_ms": 123808.5,
+        "median_ms": 95788.2,
+        "p95_ms": 208647.8
+      },
+      "n_errors": 3,
+      "wall_time_s": 4372.6
+    }
+  },
+  "threshold_sweep": [
+    {
+      "threshold": 0.05,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.1,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.2,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.3,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.4,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.5,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.6,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.7,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.8,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    },
+    {
+      "threshold": 0.9,
+      "refusal_rate": 1.0,
+      "false_refusal_rate": 0.3333,
+      "citation_hit_rate": 1.0
+    }
+  ]
+}
